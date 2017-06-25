@@ -35,11 +35,17 @@ $(objdir)/%.o: $(srcdir)/%.s
 $(objdir)/%.o: $(objdir)/%.s
 	$(AS65) $(CFLAGS65) $< -o $@
 
-$(objdir)/penguin.o: $(srcdir)/music.inc
+$(objdir)/penguin.o: $(srcdir)/music_data.inc $(srcdir)/sfx_data.inc
 
 convert: convert.cpp
 	g++ convert.cpp -o convert
 
-$(srcdir)/music.inc: convert ralph4_music.txt
-	./convert ralph4_music.txt $(srcdir)/music.inc
+convert_sfx: convert_sfx.cpp
+	g++ convert_sfx.cpp -o convert_sfx
+
+$(srcdir)/music_data.inc: convert ralph4_music.txt
+	./convert ralph4_music.txt $(srcdir)/music_data.inc
+
+$(srcdir)/sfx_data.inc: convert_sfx ralph4_sfx.txt ralph4_sfx.nsf
+	./convert_sfx ralph4_sfx.txt ralph4_sfx.nsf $(srcdir)/sfx_data.inc $(srcdir)/sfx.inc
 

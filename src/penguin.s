@@ -1,13 +1,18 @@
 .importzp penguin_zp
+.export penguin_init_ntsc
+.export penguin_init_pal
 .export penguin_process
 .export penguin_set_song
 
+.include "sfx.inc"
+
 ptr_temp             = penguin_zp +  0
 track_ptr            = penguin_zp +  2
-square1_pattern_ptr  = penguin_zp +  4
-square2_pattern_ptr  = penguin_zp +  6
-triangle_pattern_ptr = penguin_zp +  8
-noise_pattern_ptr    = penguin_zp + 10
+note_table_ptr       = penguin_zp +  4
+square1_pattern_ptr  = penguin_zp +  6
+square2_pattern_ptr  = penguin_zp +  8
+triangle_pattern_ptr = penguin_zp + 10
+noise_pattern_ptr    = penguin_zp + 12
 
 PMEM = $100 + 22
 
@@ -16,15 +21,15 @@ track_step          = PMEM + 0
 square1_note        = PMEM +  1
 square1_vol_duty_y  = PMEM +  2
 square1_pitch_y     = PMEM +  3
-square1_pitch_hi    = PMEM +  4
-square1_pitch_bend  = PMEM +  5 ; 2 bytes
+square1_pitch_bend  = PMEM +  4 ; 2 bytes
+square1_pitch_hi    = PMEM +  6
 square1_stack       = PMEM +  7
  
 square2_note        = PMEM +  8
 square2_vol_duty_y  = PMEM +  9
 square2_pitch_y     = PMEM + 10
-square2_pitch_hi    = PMEM + 11
-square2_pitch_bend  = PMEM + 12 ; 2 bytes
+square2_pitch_bend  = PMEM + 11 ; 2 bytes
+square2_pitch_hi    = PMEM + 13
 square2_stack       = PMEM + 14
 
 triangle_note       = PMEM + 15
@@ -51,10 +56,13 @@ track_speed   = PMEM2 +  6
 track_start   = PMEM2 +  7 ; 2 bytes
 track_end     = PMEM2 +  9 ; 2 bytes
 
-noise_stack_next    = PMEM2 + 12
-triangle_stack_next = PMEM2 + 13
-square2_stack_next  = PMEM2 + 14
-square1_stack_next  = PMEM2 + 15
+noise_stack_next    = PMEM2 + 11
+triangle_stack_next = PMEM2 + 12
+square2_stack_next  = PMEM2 + 13
+square1_stack_next  = PMEM2 + 14
+
+sfx_noise_play = PMEM2 + 15
+sfx_stack_temp = PMEM2 + 16
 
 debug = 0
 
@@ -99,225 +107,55 @@ debug = 0
 .endmacro
 
 .segment "MUSIC_DATA"
-.include "music.inc"
+.include "music_data.inc"
+
+.segment "SFX_DATA"
+.include "sfx_data.inc"
 
 .segment "PENGUIN"
-.linecont +
 ; Note table borrowed from GGsound borrowed from periods.s from Famitracker
-.define note_table \
-    $07F1,$077F,$0713,$06AD,$064D,$05F3,$059D,$054C,$0500,$04B8,$0474,$0434,\
-    $03F8,$03BF,$0389,$0356,$0326,$02F9,$02CE,$02A6,$0280,$025C,$023A,$021A,\
-    $01FB,$01DF,$01C4,$01AB,$0193,$017C,$0167,$0152,$013F,$012D,$011C,$010C,\
-    $00FD,$00EF,$00E1,$00D5,$00C9,$00BD,$00B3,$00A9,$009F,$0096,$008E,$0086,\
-    $007E,$0077,$0070,$006A,$0064,$005E,$0059,$0054,$004F,$004B,$0046,$0042,\
-    $003F,$003B,$0038,$0034,$0031,$002F,$002C,$0029,$0027,$0025,$0023,$0021,\
-    $001F,$001D,$001B,$001A,$0018,$0017,$0015,$0014,$0013,$0012,$0011,$0010,\
-    $000F,$000E,$000D
-
-; Unused.
-.define pal_note_table\
-    $0760,$06F6,$0692,$0634,$05DB,$0586,$0537,$04EC,$04A5,$0462,$0423,$03E8,\
-    $03B0,$037B,$0349,$0319,$02ED,$02C3,$029B,$0275,$0252,$0231,$0211,$01F3,\
-    $01D7,$01BD,$01A4,$018C,$0176,$0161,$014D,$013A,$0129,$0118,$0108,$00F9,\
-    $00EB,$00DE,$00D1,$00C6,$00BA,$00B0,$00A6,$009D,$0094,$008B,$0084,$007C,\
-    $0075,$006E,$0068,$0062,$005D,$0057,$0052,$004E,$0049,$0045,$0041,$003E,\
-    $003A,$0037,$0034,$0031,$002E,$002B,$0029,$0026,$0024,$0022,$0020,$001E,\
-    $001D,$001B,$0019,$0018,$0016,$0015,$0014,$0013,$0012,$0011,$0010,$000F,\
-    $000E,$000D,$000C
-.linecont -
-
-note_table_lo: .lobytes note_table
+ntsc_note_table:
+.word $07F1,$077F,$0713,$06AD,$064D,$05F3,$059D,$054C,$0500,$04B8,$0474,$0434
+.word $03F8,$03BF,$0389,$0356,$0326,$02F9,$02CE,$02A6,$0280,$025C,$023A,$021A
+.word $01FB,$01DF,$01C4,$01AB,$0193,$017C,$0167,$0152,$013F,$012D,$011C,$010C
+.word $00FD,$00EF,$00E1,$00D5,$00C9,$00BD,$00B3,$00A9,$009F,$0096,$008E,$0086
+.word $007E,$0077,$0070,$006A,$0064,$005E,$0059,$0054,$004F,$004B,$0046,$0042
+.word $003F,$003B,$0038,$0034,$0031,$002F,$002C,$0029,$0027,$0025,$0023,$0021
+.word $001F,$001D,$001B,$001A,$0018,$0017,$0015,$0014,$0013,$0012,$0011,$0010
+.word $000F,$000E,$000D
 track_step_function_lo:
     .byt .lobyte(update_variables)
     .byt .lobyte(update_triangle_noise)
     .byt .lobyte(update_squares)
     .byt .lobyte(update_pattern_ptrs)
-    .repeat 37
+    .repeat 78
         .byt .lobyte (update_null)
     .endrepeat
-note_table_hi: .hibytes note_table
+
+pal_note_table:
+.word $0760,$06F6,$0692,$0634,$05DB,$0586,$0537,$04EC,$04A5,$0462,$0423,$03E8
+.word $03B0,$037B,$0349,$0319,$02ED,$02C3,$029B,$0275,$0252,$0231,$0211,$01F3
+.word $01D7,$01BD,$01A4,$018C,$0176,$0161,$014D,$013A,$0129,$0118,$0108,$00F9
+.word $00EB,$00DE,$00D1,$00C6,$00BA,$00B0,$00A6,$009D,$0094,$008B,$0084,$007C
+.word $0075,$006E,$0068,$0062,$005D,$0057,$0052,$004E,$0049,$0045,$0041,$003E
+.word $003A,$0037,$0034,$0031,$002E,$002B,$0029,$0026,$0024,$0022,$0020,$001E
+.word $001D,$001B,$0019,$0018,$0016,$0015,$0014,$0013,$0012,$0011,$0010,$000F
+.word $000E,$000D,$000C
 track_step_function_hi:
     .byt .hibyte(update_variables)
     .byt .hibyte(update_triangle_noise)
     .byt .hibyte(update_squares)
     .byt .hibyte(update_pattern_ptrs)
-    .repeat 37
+    .repeat 78
         .byt .hibyte (update_null)
     .endrepeat
-.assert .lobyte(note_table_lo) = 0, error, "note_table misaligned"
-.assert .lobyte(note_table_hi) = 128, error, "note_table misaligned"
+
+.assert .lobyte(ntsc_note_table) = 0, error, "ntsc_note_table misaligned"
+.assert .lobyte(pal_note_table)  = 0, error, "pal_note_table misaligned"
 
 .align 256
-update_squares:
-    ; Total = 4+2+3+78+76 = 163 cycles
-    pla
-    nop
-    .byt $04, $00 ; IGN (3 cycles)
-
-    ; square1
-    ; 6+2+70 = 78 cycles
-    lsr square1_mask
-    bcc_aligned @dontChangeSquare1
-
-    ; Total = 2+29+16+23 = 70 cycles
-
-    ; 2 cycles
-    ldy #0
-
-    ; 5+5+4+3+4+3+5 = 29 cycles
-    inc square1_pattern_ptr+0
-    lax (square1_pattern_ptr), y
-    lda square1_instrument_lo, x
-    sta ptr_temp+0
-    lda square1_instrument_hi, x
-    sta ptr_temp+1
-    inc square1_pattern_ptr+0
-    
-    ; 4+2+4+2+2+2 = 16 cycles
-    lda square1_stack
-    eor #%01000000
-    sta square1_stack_next
-    tax
-    axs #.lobyte(-6)
-    txs
-
-    ; 5+6+6+6 = 23 cycles
-    jmp (ptr_temp)
-@dontChangeSquare1:
-    ; Stall 69 cycles
-    .byt $04, $00 ; IGN (3 cycles)
-    ldy #13
-:
-    dey
-    bne_aligned :-
-square1_instrument_assign_return:
-
-    ; square2
-    ; 6+2+68 = 76 cycles
-    lsr square2_mask
-    bcc_aligned @dontChangeSquare2
-
-    ; Total = 29+16+23 = 68
-
-    ; Y = 0
-    
-    ; 5+5+4+3+4+3+5 = 29 cycles
-    inc square2_pattern_ptr+0
-    lax (square2_pattern_ptr), y
-    lda square2_instrument_lo, x
-    sta ptr_temp+0
-    lda square2_instrument_hi, x
-    sta ptr_temp+1
-    inc square2_pattern_ptr+0
-
-    ; 4+2+4+2+2+2 = 16 cycles
-    lda square2_stack
-    eor #%01000000
-    sta square2_stack_next
-    tax
-    axs #.lobyte(-6)
-    txs
-
-    ; 5+6+6+6 = 23 cycles
-    jmp (ptr_temp)
-@dontChangeSquare2:
-    ; Stall 67 cycles
-    .byt $04, $00 ; IGN (3 cycles)
-    ldy #12
-:
-    dey
-    bne_aligned :-
-    jmp track_step_return
-
-
-update_triangle_noise:
-    ; Total = 4+4+4+3+78+70 = 148 cycles
-    pla
-    pla
-    pla
-    .byt $04, $00 ; IGN (3 cycles)
-
-    ; triangle
-    ; 6+2+70 = 78 cycles
-    lsr triangle_mask
-    bcc_aligned @dontChangeTriangle
-
-    ; Total = 2+29+16+23 = 70 cycles
-
-    ; 2 cycles
-    ldy #0
-    
-    ; 5+5+4+3+4+3+5 = 29 cycles
-    inc triangle_pattern_ptr+0
-    lax (triangle_pattern_ptr), y
-    lda triangle_instrument_lo, x
-    sta ptr_temp+0
-    lda triangle_instrument_hi, x
-    sta ptr_temp+1
-    inc triangle_pattern_ptr+0
-
-    ; 4+2+4+2+2+2 = 16 cycles
-    lda triangle_stack
-    eor #%01000000
-    sta triangle_stack_next
-    tax
-    axs #.lobyte(-6)
-    txs
-
-    ; 5+6+6+6 = 23 cycles
-    jmp (ptr_temp)
-@dontChangeTriangle:
-    ; Stall 69 cycles
-    .byt $04, $00 ; IGN (3 cycles)
-    ldy #13
-:
-    dey
-    bne_aligned :-
-triangle_instrument_assign_return:
-
-    ; noise
-    ; 6+2+62 = 70 cycles
-    lsr noise_mask
-    bcc_aligned @dontChangeNoise
-
-    ; Total = 29+16+17 = 62 cycles
-
-    ; Y = 0
-
-    ; 5+5+4+3+4+3+5 = 29 cycles
-    inc noise_pattern_ptr+0
-    lax (noise_pattern_ptr), y
-    lda noise_instrument_lo, x
-    sta ptr_temp+0
-    lda noise_instrument_hi, x
-    sta ptr_temp+1
-    inc noise_pattern_ptr+0
-
-    ; 4+2+4+2+2+2 = 16 cycles
-    lda noise_stack
-    eor #%01000000
-    sta noise_stack_next
-    tax
-    axs #.lobyte(-4)
-    txs
-
-    ; 5+6+6 = 17 cycles
-    jmp (ptr_temp)
-@dontChangeNoise:
-    ; Stall 61 cycles
-    nop
-    ldy #11
-:
-    dey
-    bne_aligned :-
-    jmp track_step_return
-
-
 update_variables:
-    ; Total = 2+4+6+27+36+39+39+7+3 = 163
-
-    nop
-    pla
+    ; Total = 6+27+38+41+41+7+3 = 163 cycles
 
     ; 2+2+2 = 6 cycles
     ldy #0
@@ -346,13 +184,20 @@ update_variables:
 :
 
     ; Triangle
-    ; 4+4+2+26 = 36 cycles
+    ; 4+2+4+3+25 = 38 cycles
     lda triangle_stack_next
+    beq_aligned @triangleSFX
     cmp triangle_stack
-    bne_aligned :+
-        ; 2+3+4+4+4+2+2+2+3 = 26 cycles
+    bne_aligned :++
+    beq_aligned :+
+@triangleSFX:
+        nop
+        nop
+        nop
+        nop
+:
+        ; 2+4+4+4+2+2+2+3 = 23 cycles
         tsx
-        pha
         pla
         pla
         pla
@@ -374,15 +219,23 @@ update_variables:
 
         
     ; Square2
-    ; 4+4+2+29 = 39 cycles
+    ; 4+2+4+3+28 = 41 cycles
     lda square2_stack_next
+    beq_aligned @square2SFX
     cmp square2_stack
-    bne_aligned :+
-        ; 2+2+4+4+4+4+2+2+2+3 = 29 cycles
+    bne_aligned :++
+    beq_aligned :+
+@square2SFX:
         nop
+        nop
+        nop
+        nop
+:
+        ;  26 cycles
+        ; 2+4+3+4+4+2+2+2+3
         tsx
         pla
-        pla
+        pha
         pla
         pla
         txa
@@ -393,9 +246,9 @@ update_variables:
         ; 3*7 + 7 = 28 cycles
         pha ; square2_stack
         tya ; A = 0
+        php ; square2_pitch_hi
         pha ; square2_pitch_bend+1
         pha ; square2_pitch_bend+0
-        php ; square2_pitch_hi
         pha ; square2_pitch_y
         pha ; square2_vol_duty_y
         lda (square2_pattern_ptr), y
@@ -403,15 +256,23 @@ update_variables:
 :
 
     ; Square1
-    ; 4+4+2+29 = 39 cycles
+    ; 4+2+4+3+28 = 41 cycles
     lda square1_stack_next
+    beq_aligned @square1SFX
     cmp square1_stack
-    bne_aligned :+
-        ; 2+2+4+4+4+4+2+2+2+3 = 29 cycles
+    bne_aligned :++
+    beq_aligned :+
+@square1SFX:
         nop
+        nop
+        nop
+        nop
+:
+        ;  26 cycles
+        ; 2+4+3+4+4+2+2+2+3
         tsx
         pla
-        pla
+        pha
         pla
         pla
         txa
@@ -422,9 +283,9 @@ update_variables:
         ; 3*7 + 7 = 28 cycles
         pha ; square1_stack
         tya ; A = 0
+        php ; square1_pitch_hi
         pha ; square1_pitch_bend+1
         pha ; square1_pitch_bend+0
-        php ; square1_pitch_hi
         pha ; square1_pitch_y
         pha ; square1_vol_duty_y
         lda (square1_pattern_ptr), y
@@ -438,8 +299,191 @@ update_variables:
     ; 3 cycles
     jmp track_step_return
 
+
+update_squares:
+    ; Total = 2+3+80+78 = 163 cycles
+    nop
+    .byt $04, $00 ; IGN (3 cycles)
+
+    ; square1
+    ; 6+2+72 = 80 cycles
+    lsr square1_mask
+    bcc_aligned @dontChangeSquare1
+
+    ; Total = 2+29+18+23 = 72 cycles
+
+    ; 2 cycles
+    ldy #0
+
+    ; 5+5+4+3+4+3+5 = 29 cycles
+    inc square1_pattern_ptr+0
+    lax (square1_pattern_ptr), y
+    lda square1_instrument_lo, x
+    sta ptr_temp+0
+    lda square1_instrument_hi, x
+    sta ptr_temp+1
+    inc square1_pattern_ptr+0
+    
+    ; 4+2+2+4+2+2+2 = 18 cycles
+    lda square1_stack_next
+    beq_aligned @square1SFX
+    eor #%01000000
+    sta square1_stack_next
+    tax
+    axs #.lobyte(-6)
+    txs
+
+    ; 5+6+6+6 = 23 cycles
+    jmp (ptr_temp)
+@square1SFX:
+    ; Stall 34 cycles
+    ldy #6
+    jmp :+
+@dontChangeSquare1:
+    ; Stall 71 cycles
+    ldy #14
+:
+    dey
+    bne_aligned :-
+square1_instrument_assign_return:
+
+    ; square2
+    ; 6+2+70 = 78 cycles
+    lsr square2_mask
+    bcc_aligned @dontChangeSquare2
+
+    ; Total = 29+18+23 = 70
+
+    ; Y = 0
+    
+    ; 5+5+4+3+4+3+5 = 29 cycles
+    inc square2_pattern_ptr+0
+    lax (square2_pattern_ptr), y
+    lda square2_instrument_lo, x
+    sta ptr_temp+0
+    lda square2_instrument_hi, x
+    sta ptr_temp+1
+    inc square2_pattern_ptr+0
+
+    ; 4+2+2+4+2+2+2 = 18 cycles
+    lda square2_stack_next
+    beq_aligned @square2SFX
+    eor #%01000000
+    sta square2_stack_next
+    tax
+    axs #.lobyte(-6)
+    txs
+
+    ; 5+6+6+6 = 23 cycles
+    jmp (ptr_temp)
+@square2SFX:
+    ; Stall 34 cycles
+    nop
+    ldy #5
+    jmp :+
+@dontChangeSquare2:
+    ; Stall 69 cycles
+    ldy #13
+:
+    dey
+    bne_aligned :-
+    jmp track_step_return
+
+
+update_triangle_noise:
+    ; Total = 4+3+80+76 = 163 cycles
+    pla
+    .byt $04, $00 ; IGN (3 cycles)
+
+    ; triangle
+    ; 6+2+72 = 80 cycles
+    lsr triangle_mask
+    bcc_aligned @dontChangeTriangle
+
+    ; Total = 2+29+18+23 = 72 cycles
+
+    ; 2 cycles
+    ldy #0
+    
+    ; 5+5+4+3+4+3+5 = 29 cycles
+    inc triangle_pattern_ptr+0
+    lax (triangle_pattern_ptr), y
+    lda triangle_instrument_lo, x
+    sta ptr_temp+0
+    lda triangle_instrument_hi, x
+    sta ptr_temp+1
+    inc triangle_pattern_ptr+0
+
+    ; 4+2+2+4+2+2+2 = 18 cycles
+    lda triangle_stack_next
+    beq_aligned @triangleSFX
+    eor #%01000000
+    sta triangle_stack_next
+    tax
+    axs #.lobyte(-6)
+    txs
+
+    ; 5+6+6+6 = 23 cycles
+    jmp (ptr_temp)
+@triangleSFX:
+    ; Stall 34 cycles
+    ldy #6
+    jmp :+
+@dontChangeTriangle:
+    ; Stall 71 cycles
+    ldy #14
+:
+    dey
+    bne_aligned :-
+triangle_instrument_assign_return:
+
+    ; noise
+    ; 6+2+68 = 76 cycles
+    lsr noise_mask
+    bcc_aligned @dontChangeNoise
+
+    ; Total = 29+22+17 = 68 cycles
+
+    ; Y = 0
+
+    ; 5+5+4+3+4+3+5 = 29 cycles
+    inc noise_pattern_ptr+0
+    lax (noise_pattern_ptr), y
+    lda noise_instrument_lo, x
+    sta ptr_temp+0
+    lda noise_instrument_hi, x
+    sta ptr_temp+1
+    inc noise_pattern_ptr+0
+
+    ; 4+2+4+2+4+2+2+2 = 22 cycles
+    lda sfx_noise_play
+    bne_aligned @noiseSFX
+    lda noise_stack
+    eor #%01000000
+    sta noise_stack_next
+    tax
+    axs #.lobyte(-4)
+    txs
+
+    ; 5+6+6 = 17 cycles
+    jmp (ptr_temp)
+@noiseSFX:
+    ; Stall 32 cycles
+    nop
+    .byt $04, $00       ; IGN (zeropage) to waste 3 cycles
+    ldy #4
+    jmp :+
+@dontChangeNoise:
+    ; Stall 61 cycles
+    ldy #12
+    .byt $04, $00       ; IGN (zeropage) to waste 3 cycles
+:
+    dey
+    bne_aligned :-
+    jmp track_step_return
+
 ; Call this function every frame in your NMI or whatever to play the music.
-; Last measurement = 760 cycles (not counting JSR)
+; Last measurement = 784 cycles (not counting JSR)
 penguin_process:
     tsx
     stx stack_temp
@@ -553,34 +597,39 @@ square1_vol_duty_return:
     sty square1_vol_duty_y
 
     ; Square1: Pitch
-    ldx #0
-    ldy square1_pitch_y
+    ldy #0
+    ldx square1_pitch_y
     rts
 square1_pitch_return:
     .byt $90, $00       ; BCC to even-out cycles
     bmi_aligned :+
     .byt $04            ; IGN (zeropage)
 :
-    dex
+    dey
     clc
     adc square1_pitch_bend+0
     sta square1_pitch_bend+0
-    txa
+    tya
     adc square1_pitch_bend+1
     sta square1_pitch_bend+1
-    iny
-    sty square1_pitch_y
 
     ; Square1 Arpeggio
-    lax square1_note
-    rts                 ; AXS
+    sec
+    lda square1_note
+    rts
+square1_arpeggio_sfx_return:
+    .byt $0C            ; IGN (absolute) to waste 4 cycles
 square1_arpeggio_return:
     .byt $04, $00       ; IGN (zeropage) to waste 3 cycles
+    inx
+    stx square1_pitch_y
+    tay
     clc
-    lda note_table_lo, x
+    lda (note_table_ptr), y
     adc square1_pitch_bend+0
     sta $4002
-    lda note_table_hi, x
+    iny
+    lda (note_table_ptr), y
     adc square1_pitch_bend+1
     and #%00000111
     cmp square1_pitch_hi
@@ -591,7 +640,7 @@ square1_arpeggio_return:
     nop
     nop
 :   sta square1_pitch_hi
-
+done_square1:
 
     ; Square2
     ldx square2_stack
@@ -607,34 +656,39 @@ square2_vol_duty_return:
     sty square2_vol_duty_y
 
     ; Square2: Pitch
-    ldx #0
-    ldy square2_pitch_y
+    ldy #0
+    ldx square2_pitch_y
     rts
 square2_pitch_return:
     .byt $90, $00       ; BCC to even-out cycles
     bmi_aligned :+
     .byt $04            ; IGN (zeropage)
 :
-    dex
+    dey
     clc
     adc square2_pitch_bend+0
     sta square2_pitch_bend+0
-    txa
+    tya
     adc square2_pitch_bend+1
     sta square2_pitch_bend+1
-    iny
-    sty square2_pitch_y
 
     ; Square2: Arpeggio
-    lax square2_note
-    rts                 ; AXS
+    sec
+    lda square2_note
+    rts
+square2_arpeggio_sfx_return:
+    .byt $0C            ; IGN (absolute) to waste 4 cycles
 square2_arpeggio_return:
     .byt $04, $00       ; IGN (zeropage) to waste 3 cycles
+    inx
+    stx square2_pitch_y
+    tay
     clc
-    lda note_table_lo, x
+    lda (note_table_ptr), y
     adc square2_pitch_bend+0
     sta $4006
-    lda note_table_hi, x
+    iny
+    lda (note_table_ptr), y
     adc square2_pitch_bend+1
     and #%00000111
     cmp square2_pitch_hi
@@ -645,6 +699,7 @@ square2_arpeggio_return:
     nop
     nop
 :   sta square2_pitch_hi
+done_square2:
 
     ; Triangle
     ldx triangle_stack
@@ -663,40 +718,46 @@ triangle_vol_duty_return:
     sty triangle_vol_duty_y
 
     ; Triangle: Pitch
-    ldx #0
-    ldy triangle_pitch_y
+    ldy #0
+    ldx triangle_pitch_y
     rts
 triangle_pitch_return:
     .byt $90, $00       ; BCC to even-out cycles
     bmi_aligned :+
     .byt $04            ; IGN (zeropage)
 :
-    dex
+    dey
     clc
     adc triangle_pitch_bend+0
     sta triangle_pitch_bend+0
-    txa
+    tya
     adc triangle_pitch_bend+1
     sta triangle_pitch_bend+1
-    iny
-    sty triangle_pitch_y
 
     ; Triangle: Arpeggio
-    lax triangle_note
-    rts                 ; AXS
+    sec
+    lda triangle_note
+    rts
+triangle_arpeggio_sfx_return:
+    .byt $0C            ; IGN (absolute) to waste 4 cycles
 triangle_arpeggio_return:
     .byt $04, $00       ; IGN (zeropage) to waste 3 cycles
+    inx
+    stx triangle_pitch_y
+    tay
     clc
-    lda note_table_lo, x
+    lda (note_table_ptr), y
     adc triangle_pitch_bend+0
     sta $400A
-    lda note_table_hi, x
+    iny
+    lda (note_table_ptr), y
     adc triangle_pitch_bend+1
     and #%00000111
     sta $400B
 
     lda #%10000000
     sta $4017
+done_triangle:
 
     ; Noise
     ldx noise_stack
@@ -713,18 +774,34 @@ noise_vol_duty_return:
 
     ; Noise: Arpeggio
     lax noise_note
-    rts                 ; AXS
+    rts
+noise_arpeggio_sfx_return:
+    .byt $0C            ; IGN (absolute) to waste 4 cycles
 noise_arpeggio_return:
     .byt $04, $00       ; IGN (zeropage) to waste 3 cycles
     lda #%00001111
     sax $400E
+done_noise:
 
     ldx stack_temp
     txs
     rts
 
+penguin_init_ntsc:
+    lda #.lobyte(ntsc_note_table)
+    sta note_table_ptr+0
+    lda #.hibyte(ntsc_note_table)
+    sta note_table_ptr+1
+    rts
 
-.proc penguin_set_song
+penguin_init_pal:
+    lda #.lobyte(pal_note_table)
+    sta note_table_ptr+0
+    lda #.hibyte(pal_note_table)
+    sta note_table_ptr+1
+    rts
+
+penguin_set_song:
     lda tracks_speed, x
     sta track_speed
 
@@ -741,9 +818,6 @@ noise_arpeggio_return:
     lda tracks_hi, x
     sta track_end+1
 
-    lda #3
-    sta track_step
-
     lda #%00001111
     sta $4015
 
@@ -751,29 +825,220 @@ noise_arpeggio_return:
     stx $4008
     stx $400C
 
-    ldx #$00
-    stx $400F
-    stx pattern_left
+    ; SAX = store 0
+    sax $400F
+    sax pattern_left
+    sax sfx_noise_play
+
+    lda #3
+    sta track_step
+
+    tsx
+    stx sfx_stack_temp
+    ldx #.lobyte(PMEM-1)
+    txs
+    ldy #0
+
+    jmp init_noise
+end_noise_sfx:
+    lda #%00110000
+    sta $400C
+
+    ldx #.lobyte(PMEM-1)
+    txs
+init_noise:
+    lda #0
+    sta sfx_noise_play
+@noise_silent_instrument:
+    jsr @noise_silent_vol_duty
+    nop
+    nop
+    jmp noise_arpeggio_sfx_return
+@noise_silent_vol_duty:
+    jsr @noise_silent_instrument_return
+    nop
+    nop
+    nop
+    sec
+    lda #%00110000
+    jmp noise_vol_duty_return
+@noise_silent_instrument_return:
+    ;2+4+6+6+2+4+4+2+2+3
+    tsx
+    stx noise_stack
+    stx noise_stack_next
+    tya
+    beq_aligned :+
+    jmp done_noise
 :
-    lda reset_instruments, x
-    sta $100, x
-    inx
-    cpx #22
-    bne :-
+    ; 2+4+6+6+2+4+4+2+2+3
 
-    lda #.lobyte(PMEM-5)
-    sta noise_stack_next
-    sta noise_stack
-    lda #.lobyte(PMEM-5-6)
-    sta triangle_stack_next
-    sta triangle_stack
-    lda #.lobyte(PMEM-5-6*2)
-    sta square2_stack_next
-    sta square2_stack
-    lda #.lobyte(PMEM-5-6*3)
-    sta square1_stack_next
-    sta square1_stack
+init_triangle:
+@triangle_silent_instrument:
+    jsr @triangle_silent_pitch
+    nop
+    nop
+    jmp triangle_arpeggio_sfx_return
+@triangle_silent_pitch:
+    jsr @triangle_silent_vol_duty
+    nop
+    nop
+    nop
+    sec
+    lda #0
+    jmp triangle_pitch_return
+@triangle_silent_vol_duty:
+    jsr @triangle_silent_instrument_return
+    nop
+    nop
+    nop
+    sec
+    lda #%00110000
+    jmp triangle_vol_duty_return
+@triangle_silent_instrument_return:
+    tsx
+    stx triangle_stack
+    stx triangle_stack_next
+    tya
+    beq_aligned :+
+    jmp done_triangle
+:
 
+init_square2:
+@square2_silent_instrument:
+    jsr @square2_silent_pitch
+    nop
+    nop
+    jmp square2_arpeggio_sfx_return
+@square2_silent_pitch:
+    jsr @square2_silent_vol_duty
+    nop
+    nop
+    nop
+    sec
+    lda #0
+    jmp square2_pitch_return
+@square2_silent_vol_duty:
+    jsr @square2_silent_instrument_return
+    nop
+    nop
+    nop
+    sec
+    lda #%00110000
+    jmp square2_vol_duty_return
+@square2_silent_instrument_return:
+    tsx
+    stx square2_stack
+    stx square2_stack_next
+    tya
+    beq_aligned :+
+    jmp done_square2
+:
+
+init_square1:
+@square1_silent_instrument:
+    jsr @square1_silent_pitch
+    nop
+    nop
+    jmp square1_arpeggio_sfx_return
+@square1_silent_pitch:
+    jsr @square1_silent_vol_duty
+    nop
+    nop
+    nop
+    sec
+    lda #0
+    jmp square1_pitch_return
+@square1_silent_vol_duty:
+    jsr square1_silent_instrument_return
+    nop
+    nop
+    nop
+    sec
+    lda #%00110000
+    jmp square1_vol_duty_return
+square1_silent_instrument_return:
+    tsx
+    stx square1_stack
+    stx square1_stack_next
+    tya
+    beq_aligned :+
+    jmp done_square1
+:
+
+    ldx sfx_stack_temp
+    txs
     rts
-.endproc
+
+end_square1_sfx:
+    ; Stall 94 cycles:
+    .byt $04, $00 ; IGN (3 cycles)
+    ldx #18
+:
+    dex
+    bne_aligned :-
+    lda #%00110000
+    sta $4000
+    lax square1_stack
+    axs #.lobyte(-6)
+    txs
+    jmp init_square1
+
+end_square2_sfx:
+    ; Stall 94 cycles:
+    .byt $04, $00 ; IGN (3 cycles)
+    ldx #18
+:
+    dex
+    bne_aligned :-
+    lda #%00110000
+    sta $4004
+    lax square2_stack
+    axs #.lobyte(-6)
+    txs
+    jmp init_square2
+
+end_triangle_sfx:
+    ; Stall 93 cycles:
+    nop
+    ldx #18
+:
+    dex
+    bne_aligned :-
+    lda #%00110000
+    sta $4008
+    lax triangle_stack
+    axs #.lobyte(-6)
+    txs
+    jmp init_triangle
+
+
+square2_sfx_call_return:
+    ldx #.lobyte(square2_pitch_hi)
+    .byt $0C            ; IGN (absolute)
+square1_sfx_call_return:
+    ldx #.lobyte(square1_pitch_hi)
+    txs
+    php ; pitch_hi
+triangle_sfx_call_return_impl:
+    lda #0
+    pha ; pitch_bend+1
+    pha ; pitch_bend+0
+    pha ; pitch_y
+    pha ; vol_duty_y
+    ldx sfx_stack_temp
+    txs
+    rts
+
+triangle_sfx_call_return:
+    ldx #.lobyte(triangle_pitch_bend+1)
+    txs
+    jmp triangle_sfx_call_return_impl
+
+noise_sfx_call_return:
+    lda #0
+    sta noise_vol_duty_y
+    ldx sfx_stack_temp
+    txs
+    rts
 

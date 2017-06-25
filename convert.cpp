@@ -213,7 +213,7 @@ int parse_note(std::string const& str)
 
     note += 12 * (str[2] - '0');
 
-    return note - 9;
+    return (note - 9) * 2;
 }
 
 
@@ -661,10 +661,10 @@ int main(int argc, char** argv)
 
             ss << chan << "_instrument_" << i << "_pitch:\n";
             ss << "    jsr " << chan << "_instrument_" << i << "_vol_duty\n";
-            ss << "    cpy #" << macro->sequence.size() << '\n';
+            ss << "    cpx #" << macro->sequence.size() << '\n';
             ss << "    bcc :+\n";
-            ss << "    ldy #" << macro->loop << '\n';
-            ss << ":   lda macro_" << instruments[j].pseq_pit << ", y\n";
+            ss << "    ldx #" << macro->loop << '\n';
+            ss << ":   lda macro_" << instruments[j].pseq_pit << ", x\n";
             ss << "    jmp " << chan << "_pitch_return\n";
 
             bucket.size += (3+2+2+2+3+3);
@@ -692,17 +692,15 @@ int main(int argc, char** argv)
                 }
                 if(macro->sequence[i])
                 {
-                    ss << "    axs #.lobyte(";
-                    if(k == 3)
-                        ss << macro->sequence[i];
+                    if(k != 3)
+                        ss << "    sbc #.lobyte(";
                     else
-                        ss << -macro->sequence[i];
+                        ss << "    axs #.lobyte(";
+                    ss << (macro->sequence[i] * (k == 3 ? 1 : -2));
                     ss << ")\n";
                 }
                 else
-                {
                     ss << "    nop\n";
-                }
                 if(i == macro->loop)
                     ss << "    jsr " << chan << "_arpeggio_return+2\n";
                 else
@@ -760,21 +758,6 @@ int main(int argc, char** argv)
                      bucket.size, bucket.string.c_str());
     }
     std::fprintf(fp, "%s", arpeggio_string.c_str());
-
-    std::fprintf(fp, "reset_instruments:\n");
-    for(int k = 0; k < 4; ++k)
-    {
-        char const* chan = channel_name(k);
-        std::fprintf(fp, ".addr %s_instrument_%i_vol_duty+2\n", 
-                     chan, 0);
-        if(k != 3)
-        {
-            std::fprintf(fp, ".addr %s_instrument_%i_pitch+2\n", 
-                         chan, 0);
-        }
-        std::fprintf(fp, ".addr %s_instrument_%i_arpeggio+2\n", 
-                     chan, 0);
-    }
 
     std::fprintf(fp, "tracks_lo:\n");
     for(int i = 0; i < tracks.size(); ++i)

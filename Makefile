@@ -38,7 +38,7 @@ $(objdir)/%.o: $(objdir)/%.s
 $(objdir)/penguin.o: $(srcdir)/music_data.inc $(srcdir)/sfx_data.inc
 
 convert: convert.cpp
-	g++ convert.cpp -o convert
+	g++ -g convert.cpp -o convert
 
 convert_sfx: convert_sfx.cpp
 	g++ convert_sfx.cpp -o convert_sfx

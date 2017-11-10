@@ -79,12 +79,7 @@ bool operator<(channel_data_t a, channel_data_t b)
 struct row_t
 {
     int number;
-
     std::array<channel_data_t, 4> chan;
-    //channel_data_t square1;
-    //channel_data_t square2;
-    //channel_data_t triangle;
-    //channel_data_t noise;
     channel_data_t dpcm;
 };
 
@@ -374,7 +369,7 @@ int main(int argc, char** argv)
         {
             active_track->order.push_back({});
             for(int i = 0; i < 5; ++i)
-                active_track->order.back()[i] = std::atoi(words[i+3].c_str());
+                active_track->order.back()[i] = parse_hex(words[i+3]);
         }
         else if(words[0] == "PATTERN")
         {
@@ -465,7 +460,6 @@ int main(int argc, char** argv)
             for(std::size_t k = 0; k < 4; ++k)
             {
                 auto const& pv = track.patterns[pattern_array[k]];
-                //auto const& pv = track.patterns[0];
                 std::size_t ps = pv.size() / 8;
                 for(std::size_t i = 0; i < ps; ++i)
                 {

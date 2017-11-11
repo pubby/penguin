@@ -818,6 +818,10 @@ penguin_set_song:
     lda tracks_hi, x
     sta track_end+1
 
+    lda #%00001000
+    sta $4001
+    sta $4005
+
     lda #%00001111
     sta $4015
 

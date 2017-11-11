@@ -459,7 +459,7 @@ int main(int argc, char** argv)
         {
             for(std::size_t k = 0; k < 4; ++k)
             {
-                auto const& pv = track.patterns[pattern_array[k]];
+                auto const& pv = track.patterns.at(pattern_array[k]);
                 std::size_t ps = pv.size() / 8;
                 for(std::size_t i = 0; i < ps; ++i)
                 {

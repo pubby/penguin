@@ -1,3 +1,4 @@
+#include <iostream>
 #include <algorithm>
 #include <array>
 #include <cstdio>
@@ -80,6 +81,7 @@ struct row_t
 {
     int number;
     std::array<channel_data_t, 4> chan;
+    std::array<bool, 4> d00;
     channel_data_t dpcm;
 };
 
@@ -306,7 +308,7 @@ int main(int argc, char** argv)
     char const* end = buffer.data() + buffer.size();
     std::vector<std::string> words;
     std::map<std::pair<int, int>, macro_t> macros;
-    std::vector<instrument_t> instruments;
+    std::map<int, instrument_t> instruments;
     std::vector<track_t> tracks;
     track_t* active_track = nullptr;
     std::vector<row_t>* active_pattern = nullptr;
@@ -349,7 +351,7 @@ int main(int argc, char** argv)
             instrument.seq_hpi = std::atoi(words[5].c_str());
             instrument.seq_dut = std::atoi(words[6].c_str());
             instrument.seq_dut = std::atoi(words[6].c_str());
-            instruments.push_back(instrument);
+            instruments.emplace(std::atoi(words[1].c_str()), instrument);
         }
         else if(words[0] == "TRACK")
         {
@@ -376,7 +378,7 @@ int main(int argc, char** argv)
             active_track->patterns.push_back({});
             active_pattern = &active_track->patterns.back();
         }
-        else if(words[0] == "ROW")                            
+        else if(active_pattern && words[0] == "ROW")                            
         {
             row_t row = {};
 
@@ -394,7 +396,11 @@ int main(int argc, char** argv)
             row.chan[3].note = parse_note(words[18]);
             row.chan[3].instrument = parse_hex(words[19]);
 
+            for(unsigned i = 0; i < 4; ++i)
+                row.d00[i] = words[6+5*i] == "D00";
+
             active_pattern->push_back(row);
+
         }
     }
 
@@ -412,7 +418,6 @@ int main(int argc, char** argv)
     }
 
     // Add blank instruments
-    int blank_instrument;
     {
         instrument_t instrument = {};
         instrument.seq_vol = -10;
@@ -423,8 +428,7 @@ int main(int argc, char** argv)
         instrument.pseq_vol_duty = -1;
         instrument.pseq_arp = -1;
         instrument.pseq_pit = -1;
-        blank_instrument = instruments.size();
-        instruments.push_back(instrument);
+        instruments.emplace(-1, instrument);
     }
 
     fp = std::fopen(argv[2], "w");
@@ -445,8 +449,8 @@ int main(int argc, char** argv)
 
     for(int k = 0; k < 4; ++k)
     {
-        penguin_instrument_map[k][blank_instrument] = 0;
-        penguin_instrument_vector[k].push_back(blank_instrument);
+        penguin_instrument_map[k][-1] = 0;
+        penguin_instrument_vector[k].push_back(-1);
     }
 
     std::fprintf(fp, ".align 256\n");
@@ -457,10 +461,26 @@ int main(int argc, char** argv)
 
         for(auto const& pattern_array : track.order)
         {
+            std::size_t ps = -1;
             for(std::size_t k = 0; k < 4; ++k)
             {
                 auto const& pv = track.patterns.at(pattern_array[k]);
-                std::size_t ps = pv.size() / 8;
+                unsigned size = 0;
+                for(row_t const& row : pv)
+                {
+                    ++size;
+                    if(row.d00[k])
+                        break;
+                }
+                if(size % 8 != 0)
+                    throw std::runtime_error("pattern size not multiple of 8");
+                if(size / 8 < ps)
+                    ps = size / 8;
+            }
+
+            for(std::size_t k = 0; k < 4; ++k)
+            {
+                auto const& pv = track.patterns.at(pattern_array[k]);
                 for(std::size_t i = 0; i < ps; ++i)
                 {
                     std::array<channel_data_t, 8> penguin_pattern;
@@ -469,10 +489,7 @@ int main(int argc, char** argv)
                         channel_data_t cd = pv[i*8+j].chan[k];
 
                         if(cd.note == -2)
-                        {
-                            penguin_pattern[j] 
-                                = { blank_instrument, 0 };
-                        }
+                            penguin_pattern[j] = { 0, 0 };
                         else if(cd.instrument >= 0 && cd.note >= 0)
                         {
                             auto pair = penguin_instrument_map[k].emplace(
@@ -505,7 +522,11 @@ int main(int argc, char** argv)
         std::fprintf(fp, "track_%i:\n", t);
         for(std::size_t i = 0; i < penguin_channels[0].size(); ++i)
         for(std::size_t k = 0; k < 4; ++k)
+        {
+            if(penguin_channels[k].size() != penguin_channels[0].size())
+               throw std::runtime_error("bad size");
             std::fprintf(fp, ".addr pattern_%i\n", penguin_channels[k][i]);
+        }
     }
     std::fprintf(fp, "tracks_end:\n");
 
@@ -544,9 +565,15 @@ int main(int argc, char** argv)
     for(int i = 0; i < penguin_instrument_vector[k].size(); ++i)
     {
         char const* chan = channel_name(k);
-        int const j = penguin_instrument_vector[k][i];
+        int const j = penguin_instrument_vector.at(k).at(i);
 
         {
+            auto it = macros.find(std::make_pair(macro_t::volume, instruments.at(j).seq_vol));
+            if(it == macros.end())
+            {
+                std::cout << "fuck" << std::endl;
+                std::cout << "seq_vol" << instruments[j].seq_vol << std::endl;
+            }
             macro_t vol_duty = combine_vol_duty(
                 macros.at(std::make_pair(macro_t::volume, instruments[j].seq_vol)),
                 macros.at(std::make_pair(macro_t::duty, instruments[j].seq_dut)));

@@ -6,7 +6,7 @@
 
 .include "sfx.inc"
 
-ptr_temp             = penguin_zp +  0
+penguin_ptr_temp     = penguin_zp +  0
 track_ptr            = penguin_zp +  2
 note_table_ptr       = penguin_zp +  4
 square1_pattern_ptr  = penguin_zp +  6
@@ -14,7 +14,10 @@ square2_pattern_ptr  = penguin_zp +  8
 triangle_pattern_ptr = penguin_zp + 10
 noise_pattern_ptr    = penguin_zp + 12
 
-PMEM = $100 + 22
+stack_temp    = $100
+pattern_left  = $101
+
+PMEM = $102 + 22
 
 track_step          = PMEM + 0
 
@@ -44,27 +47,22 @@ noise_stack         = PMEM + 23
 
 PMEM2 = PMEM+24
 
-stack_temp    = PMEM2 + 0
-pattern_left  = PMEM2 + 1
+noise_mask    = PMEM2 +  0
+triangle_mask = PMEM2 +  1
+square2_mask  = PMEM2 +  2
+square1_mask  = PMEM2 +  3
 
-noise_mask    = PMEM2 +  2
-triangle_mask = PMEM2 +  3
-square2_mask  = PMEM2 +  4
-square1_mask  = PMEM2 +  5
+track_speed   = PMEM2 +  4
+track_start   = PMEM2 +  5 ; 2 bytes
+track_end     = PMEM2 +  7 ; 2 bytes
 
-track_speed   = PMEM2 +  6
-track_start   = PMEM2 +  7 ; 2 bytes
-track_end     = PMEM2 +  9 ; 2 bytes
+noise_stack_next    = PMEM2 + 9
+triangle_stack_next = PMEM2 + 10
+square2_stack_next  = PMEM2 + 11
+square1_stack_next  = PMEM2 + 12
 
-noise_stack_next    = PMEM2 + 11
-triangle_stack_next = PMEM2 + 12
-square2_stack_next  = PMEM2 + 13
-square1_stack_next  = PMEM2 + 14
-
-sfx_noise_play = PMEM2 + 15
-sfx_stack_temp = PMEM2 + 16
-
-debug = 0
+sfx_noise_play = PMEM2 + 13
+sfx_stack_temp = PMEM2 + 14
 
 .macro beq_aligned label
     beq label
@@ -319,9 +317,9 @@ update_squares:
     inc square1_pattern_ptr+0
     lax (square1_pattern_ptr), y
     lda square1_instrument_lo, x
-    sta ptr_temp+0
+    sta penguin_ptr_temp+0
     lda square1_instrument_hi, x
-    sta ptr_temp+1
+    sta penguin_ptr_temp+1
     inc square1_pattern_ptr+0
     
     ; 4+2+2+4+2+2+2 = 18 cycles
@@ -334,7 +332,7 @@ update_squares:
     txs
 
     ; 5+6+6+6 = 23 cycles
-    jmp (ptr_temp)
+    jmp (penguin_ptr_temp)
 @square1SFX:
     ; Stall 34 cycles
     ldy #6
@@ -360,9 +358,9 @@ square1_instrument_assign_return:
     inc square2_pattern_ptr+0
     lax (square2_pattern_ptr), y
     lda square2_instrument_lo, x
-    sta ptr_temp+0
+    sta penguin_ptr_temp+0
     lda square2_instrument_hi, x
-    sta ptr_temp+1
+    sta penguin_ptr_temp+1
     inc square2_pattern_ptr+0
 
     ; 4+2+2+4+2+2+2 = 18 cycles
@@ -375,7 +373,7 @@ square1_instrument_assign_return:
     txs
 
     ; 5+6+6+6 = 23 cycles
-    jmp (ptr_temp)
+    jmp (penguin_ptr_temp)
 @square2SFX:
     ; Stall 34 cycles
     nop
@@ -409,9 +407,9 @@ update_triangle_noise:
     inc triangle_pattern_ptr+0
     lax (triangle_pattern_ptr), y
     lda triangle_instrument_lo, x
-    sta ptr_temp+0
+    sta penguin_ptr_temp+0
     lda triangle_instrument_hi, x
-    sta ptr_temp+1
+    sta penguin_ptr_temp+1
     inc triangle_pattern_ptr+0
 
     ; 4+2+2+4+2+2+2 = 18 cycles
@@ -424,7 +422,7 @@ update_triangle_noise:
     txs
 
     ; 5+6+6+6 = 23 cycles
-    jmp (ptr_temp)
+    jmp (penguin_ptr_temp)
 @triangleSFX:
     ; Stall 34 cycles
     ldy #6
@@ -450,9 +448,9 @@ triangle_instrument_assign_return:
     inc noise_pattern_ptr+0
     lax (noise_pattern_ptr), y
     lda noise_instrument_lo, x
-    sta ptr_temp+0
+    sta penguin_ptr_temp+0
     lda noise_instrument_hi, x
-    sta ptr_temp+1
+    sta penguin_ptr_temp+1
     inc noise_pattern_ptr+0
 
     ; 4+2+4+2+4+2+2+2 = 22 cycles
@@ -466,7 +464,7 @@ triangle_instrument_assign_return:
     txs
 
     ; 5+6+6 = 17 cycles
-    jmp (ptr_temp)
+    jmp (penguin_ptr_temp)
 @noiseSFX:
     ; Stall 32 cycles
     nop
@@ -491,10 +489,10 @@ penguin_process:
     dec track_step
     ldx track_step
     lda track_step_function_lo, x
-    sta ptr_temp+0
+    sta penguin_ptr_temp+0
     lda track_step_function_hi, x
-    sta ptr_temp+1
-    jmp (ptr_temp)
+    sta penguin_ptr_temp+1
+    jmp (penguin_ptr_temp)
 
 update_null:
     pla
@@ -804,6 +802,7 @@ penguin_init_pal:
 penguin_set_song:
     lda tracks_speed, x
     sta track_speed
+    sta track_step
 
     lda tracks_lo, x
     sta track_ptr+0
@@ -833,9 +832,6 @@ penguin_set_song:
     sax $400F
     sax pattern_left
     sax sfx_noise_play
-
-    lda #3
-    sta track_step
 
     tsx
     stx sfx_stack_temp

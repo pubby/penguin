@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cctype>
 #include <map>
 #include <set>
 #include <sstream>
@@ -283,7 +284,7 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    FILE* fp = std::fopen(argv[1], "r");
+    FILE* fp = std::fopen(argv[1], "rb");
     if(!fp)
     {
         std::fprintf(stderr, "can't open %s", argv[1]);
@@ -298,7 +299,7 @@ int main(int argc, char** argv)
 
     if(std::fread(buffer.data(), filesize, 1, fp) != 1)
     {
-        std::fprintf(stderr, "can't read %s", argv[0]);
+        std::fprintf(stderr, "can't read %s", argv[1]);
         return 1;
     }
 

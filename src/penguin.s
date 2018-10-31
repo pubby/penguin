@@ -66,42 +66,42 @@ sfx_stack_temp = PMEM2 + 14
 
 .macro beq_aligned label
     beq label
-    .assert .hibyte(*) = .hibyte(label), error, "beq misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "beq misaligned"
 .endmacro
 
 .macro bne_aligned label
     bne label
-    .assert .hibyte(*) = .hibyte(label), error, "bne misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bne misaligned"
 .endmacro
 
 .macro bcs_aligned label
     bcs label
-    .assert .hibyte(*) = .hibyte(label), error, "bcs misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bcs misaligned"
 .endmacro
 
 .macro bcc_aligned label
     bcc label
-    .assert .hibyte(*) = .hibyte(label), error, "bcc misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bcc misaligned"
 .endmacro
 
 .macro bvs_aligned label
     bvs label
-    .assert .hibyte(*) = .hibyte(label), error, "bvs misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bvs misaligned"
 .endmacro
 
 .macro bvc_aligned label
     bvc label
-    .assert .hibyte(*) = .hibyte(label), error, "bvc misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bvc misaligned"
 .endmacro
 
 .macro bpl_aligned label
     bpl label
-    .assert .hibyte(*) = .hibyte(label), error, "bpl misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bpl misaligned"
 .endmacro
 
 .macro bmi_aligned label
     bmi label
-    .assert .hibyte(*) = .hibyte(label), error, "bmi misaligned"
+    .assert .hibyte(*+2) = .hibyte(label), error, "bmi misaligned"
 .endmacro
 
 .segment "MUSIC_DATA"
